@@ -1,0 +1,157 @@
+import tkinter as tk
+from tkinter import filedialog, ttk
+import fitz  # PyMuPDF
+from PIL import Image, ImageTk
+
+class PDFViewer:
+    def __init__(self, root):
+        self.root = root
+        self.zoom = 2  # Initial zoom level
+        self.zoom_step = 0.25  # Zoom increment
+        self.sticker_counts = {}  # Dictionary to hold the count of stickers per page
+        self.stickers = {}  # Dictionary to hold the sticker IDs per page
+
+        # Configure the main window
+        self.root.title("PDF Sticker Marker")
+
+        # Split the window into left and right frames
+        self.left_frame = tk.Frame(root, width=200)
+        self.left_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.right_frame = tk.Frame(root)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # Set up the table for sticker counts
+        self.sticker_table = ttk.Treeview(self.left_frame, columns=('Page', 'Count'), show='headings')
+        self.sticker_table.heading('Page', text='Page Number')
+        self.sticker_table.heading('Count', text='Sticker Count')
+        self.sticker_table.pack(side=tk.TOP, fill=tk.Y, expand=True)
+
+        # Canvas within a frame (for scrolling)
+        self.canvas_frame = tk.Frame(self.right_frame)
+        self.canvas_frame.pack(fill=tk.BOTH, expand=1)
+        self.canvas = tk.Canvas(self.canvas_frame, bg='white')
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+
+        # Scrollbars
+        self.v_scroll = tk.Scrollbar(self.canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.config(yscrollcommand=self.v_scroll.set)
+        self.h_scroll = tk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        self.canvas.config(xscrollcommand=self.h_scroll.set)
+
+        # Buttons
+        button_frame = tk.Frame(self.right_frame)
+        button_frame.pack(fill=tk.X)
+
+        upload_btn = tk.Button(button_frame, text="Upload PDF", command=self.upload_pdf)
+        upload_btn.pack(side=tk.LEFT)
+
+        prev_page_btn = tk.Button(button_frame, text="Previous Page", command=self.prev_page)
+        prev_page_btn.pack(side=tk.LEFT)
+
+        next_page_btn = tk.Button(button_frame, text="Next Page", command=self.next_page)
+        next_page_btn.pack(side=tk.LEFT)
+
+        add_sticker_btn = tk.Button(button_frame, text="Add Sticker", command=self.add_sticker_mode)
+        add_sticker_btn.pack(side=tk.LEFT)
+
+        undo_btn = tk.Button(button_frame, text="Undo", command=self.undo_sticker)
+        undo_btn.pack(side=tk.LEFT)
+
+        zoom_in_btn = tk.Button(button_frame, text="Zoom In", command=self.zoom_in)
+        zoom_in_btn.pack(side=tk.LEFT)
+
+        zoom_out_btn = tk.Button(button_frame, text="Zoom Out", command=self.zoom_out)
+        zoom_out_btn.pack(side=tk.LEFT)
+
+        # PDF document handling
+        self.doc = None
+        self.page_number = 0
+        self.add_sticker = False
+
+    def upload_pdf(self):
+        filepath = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+        if filepath:
+            self.doc = fitz.open(filepath)
+            self.page_number = 0
+            self.show_page()
+            self.stickers = {page: [] for page in range(len(self.doc))}  # Initialize sticker list for each page
+            self.update_sticker_table()  # Update table whenever a new document is loaded
+
+    def show_page(self):
+        if self.doc:
+            page = self.doc[self.page_number]
+            pix = page.get_pixmap(matrix=fitz.Matrix(self.zoom, self.zoom))
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            self.photo = ImageTk.PhotoImage(image=img)
+            self.canvas.create_image(10, 10, image=self.photo, anchor=tk.NW)
+            self.update_sticker_table()
+
+    def prev_page(self):
+        if self.doc and self.page_number > 0:
+            self.page_number -= 1
+            self.show_page()
+
+    def next_page(self):
+        if self.doc and self.page_number < len(self.doc) - 1:
+            self.page_number += 1
+            self.show_page()
+
+    def add_sticker_mode(self):
+        self.add_sticker = not self.add_sticker
+        if self.add_sticker:
+            self.canvas.bind("<Button-1>", self.place_sticker)
+        else:
+            self.canvas.unbind("<Button-1>")
+
+    def place_sticker(self, event):
+        if self.add_sticker:
+            # Parameters for the size of the tick
+            line_length = 10 * self.zoom
+            line_width = 2 * self.zoom
+
+            # Coordinates for the tick
+            x1, y1 = (event.x, event.y)
+            x2, y2 = (event.x + line_length / 2, event.y - line_length)
+            x3, y3 = (event.x - line_length / 2, event.y - line_length / 2)
+
+            # Draw two lines to make a tick and store the line IDs
+            line1 = self.canvas.create_line(x1, y1, x2, y2, fill='green', width=line_width)
+            line2 = self.canvas.create_line(x1, y1, x3, y3, fill='green', width=line_width)
+            self.stickers[self.page_number].extend([line1, line2])
+
+            # Update sticker count
+            self.sticker_counts[self.page_number] = self.sticker_counts.get(self.page_number, 0) + 1
+            self.update_sticker_table()
+
+    def undo_sticker(self):
+        if self.stickers[self.page_number]:
+            # Remove the last two lines (which form the tick)
+            self.canvas.delete(self.stickers[self.page_number].pop())
+            self.canvas.delete(self.stickers[self.page_number].pop())
+            # Update the sticker count
+            self.sticker_counts[self.page_number] = self.sticker_counts.get(self.page_number, 0) - 1
+            self.update_sticker_table()
+
+    def zoom_in(self):
+        if self.zoom < 4:  # Max zoom level of 4x
+            self.zoom += self.zoom_step
+            self.show_page()
+
+    def zoom_out(self):
+        if self.zoom > 1:  # Min zoom level of 1x
+            self.zoom -= self.zoom_step
+            self.show_page()
+
+    def update_sticker_table(self):
+        for i in self.sticker_table.get_children():
+            self.sticker_table.delete(i)
+        for page, count in sorted(self.sticker_counts.items()):
+            self.sticker_table.insert('', 'end', values=(page + 1, count))
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PDFViewer(root)
+    root.mainloop()

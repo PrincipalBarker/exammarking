@@ -1,0 +1,83 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+from pdf2image import convert_from_path
+from PyPDF2 import PdfReader, PdfWriter
+import pytesseract
+import os
+
+def select_folder_with_prompt(prompt_message):
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo("Prompt", prompt_message)
+    folder_path = filedialog.askdirectory()
+    root.destroy()
+    return folder_path
+
+def read_barcode_from_image(page_image):
+    width, height = page_image.size
+
+    offset = width // 10  
+    left = 0 + offset
+    upper = height - height // 10
+    right = width // 10 + offset
+    lower = height
+
+    cropped = page_image.crop((left, upper, right, lower))
+    return pytesseract.image_to_string(cropped).strip()
+
+def extract_barcodes_from_pdf(file_path):
+    images = convert_from_path(file_path)
+    return [read_barcode_from_image(img) for img in images]
+
+def create_progress_window():
+    progress_win = tk.Toplevel()
+    progress_win.title("Progress")
+    tk.Label(progress_win, text="Processing PDFs...").pack(pady=10)
+    progress = ttk.Progressbar(progress_win, orient="horizontal", mode="determinate", length=300)
+    progress.pack(pady=20)
+    progress_win.update()
+    return progress, progress_win
+
+def main():
+    folder_path = select_folder_with_prompt("Select a folder containing PDFs.")
+    if not folder_path:
+        return
+
+    pdf_files = [f for f in os.listdir(folder_path) if f.endswith('.pdf')]
+    barcode_to_pages_map = {}
+
+    # Create a progress window with a progress bar
+    progress, progress_win = create_progress_window()
+    progress["maximum"] = len(pdf_files)
+    progress["value"] = 0
+
+    for pdf_file in pdf_files:
+        file_path = os.path.join(folder_path, pdf_file)
+        pdf = PdfReader(file_path)
+        barcodes = extract_barcodes_from_pdf(file_path)
+        
+        for i, barcode in enumerate(barcodes):
+            if barcode not in barcode_to_pages_map:
+                barcode_to_pages_map[barcode] = []
+            barcode_to_pages_map[barcode].append((file_path, i))
+        
+        # Update the progress bar
+        progress["value"] += 1
+        progress_win.update()
+
+    progress_win.destroy()
+    save_path = select_folder_with_prompt("Select a folder to save collated PDFs.")
+    if not save_path:
+        return
+
+    for barcode, pages in barcode_to_pages_map.items():
+        output_pdf = PdfWriter()
+        for file_path, page_num in pages:
+            pdf = PdfReader(file_path)
+            output_pdf.add_page(pdf.pages[page_num])
+
+        with open(os.path.join(save_path, f"page_{barcode}.pdf"), "wb") as out:
+            output_pdf.write(out)
+
+if __name__ == "__main__":
+    main()

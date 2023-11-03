@@ -1,0 +1,78 @@
+import os
+import io
+from tkinter import filedialog, Tk, Label, Button, messagebox
+from pdf2image import convert_from_path
+from PIL import Image
+
+class AssessmentApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Assessment QR and Barcode Appender")
+
+        self.label = Label(root, text="Assessment QR and Barcode Appender", font=("Arial", 16))
+        self.label.pack(pady=20)
+
+        self.button = Button(root, text="Select the assessment paper (PDF format)", command=self.select_pdf)
+        self.button.pack(pady=5)
+
+    def update_label_and_button(self, new_label_text, new_button_text, new_command):
+        self.label.config(text=new_label_text)
+        self.button.config(text=new_button_text, command=new_command)
+
+    def select_pdf(self):
+        self.pdf_path = filedialog.askopenfilename(title="Select the assessment paper (PDF format)", filetypes=(("PDF files", "*.pdf"), ("All files", "*.*")))
+        if self.pdf_path:
+            self.update_label_and_button("Now, select the folder containing pupil QR codes.", "Select QR Folder", self.select_qr_folder)
+
+    def select_qr_folder(self):
+        self.qr_folder = filedialog.askdirectory(title="Select the folder containing pupil QR codes")
+        if self.qr_folder:
+            self.update_label_and_button("Now, select the folder containing page specific barcodes.", "Select Barcode Folder", self.select_barcode_folder)
+
+    def select_barcode_folder(self):
+        self.barcode_folder = filedialog.askdirectory(title="Select the folder containing page specific barcodes")
+        if self.barcode_folder:
+            self.update_label_and_button("Finally, select where to save the completed files.", "Select Output Folder", self.select_output_folder)
+
+    def select_output_folder(self):
+        self.output_folder = filedialog.askdirectory(title="Select where to save the completed files")
+        if self.output_folder:
+            self.process_pdfs()
+            self.update_label_and_button("Processing complete!", "Exit", self.root.quit)
+
+    def process_pdfs(self):
+        all_pages = convert_from_path(self.pdf_path)
+
+        for qr_file in os.listdir(self.qr_folder):
+            if not qr_file.endswith(".png"):
+                continue
+
+            qr_image_path = os.path.join(self.qr_folder, qr_file)
+            qr_img = Image.open(qr_image_path)
+            qr_img = qr_img.resize((qr_img.width // 2, qr_img.height // 2))
+
+            output_pages = []
+
+            for page_num, page_img in enumerate(all_pages):
+                # Overlay QR code to top-left
+                page_img.paste(qr_img, (0, page_img.height - qr_img.height))
+
+                # Overlay barcode to the right of QR code
+                barcode_image_path = os.path.join(self.barcode_folder, f"PAGE_{page_num+1:04}.png")
+                barcode_img = Image.open(barcode_image_path)
+                
+                # Resize the barcode to match the height of the QR code
+                barcode_width = int((qr_img.height / barcode_img.height) * barcode_img.width)
+                barcode_img = barcode_img.resize((barcode_width, qr_img.height))
+
+                page_img.paste(barcode_img, (qr_img.width, page_img.height - barcode_img.height))
+
+                output_pages.append(page_img)
+
+            new_pdf_path = os.path.join(self.output_folder, f"Assessment_{os.path.splitext(qr_file)[0]}.pdf")
+            output_pages[0].save(new_pdf_path, save_all=True, append_images=output_pages[1:])
+
+if __name__ == "__main__":
+    root = Tk()
+    app = AssessmentApp(root)
+    root.mainloop()

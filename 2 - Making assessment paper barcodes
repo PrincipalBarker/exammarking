@@ -1,0 +1,39 @@
+import os
+import barcode
+from barcode.writer import ImageWriter
+from tkinter import filedialog, Tk, Label, Button, simpledialog, messagebox
+
+class BarcodeApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Barcode Generator for Assessment Pages")
+
+        Label(root, text="Barcode Generator for Assessment Pages", font=("Arial", 16)).pack(pady=20)
+
+        Button(root, text="Enter Number of Pages", command=self.ask_number_of_pages).pack(pady=5)
+
+    def ask_number_of_pages(self):
+        number = simpledialog.askinteger("Input", "How many pages are there on the assessment paper?")
+        if number:
+            self.choose_save_location(number)
+
+    def choose_save_location(self, number_of_pages):
+        save_directory = filedialog.askdirectory(title="Choose a directory to save the barcodes")
+        if not save_directory:
+            return
+
+        self.generate_and_save_barcodes(number_of_pages, save_directory)
+
+    def generate_and_save_barcodes(self, number_of_pages, save_directory):
+        for page in range(1, number_of_pages + 1):
+            barcode_value = f"PAGE_{page:04}"  # Format it as PAGE_0001, PAGE_0002, etc.
+            barcode_image = barcode.get('code128', barcode_value, writer=ImageWriter())
+            path = os.path.join(save_directory, f"{barcode_value}.png")
+            barcode_image.save(path)  # Save the barcode with the page number
+
+        messagebox.showinfo("Success", f"All {number_of_pages} barcodes saved successfully!")
+
+if __name__ == "__main__":
+    root = Tk()
+    app = BarcodeApp(root)
+    root.mainloop()

@@ -1,0 +1,64 @@
+import csv
+import qrcode
+import os
+from tkinter import filedialog, Tk, Label, Button, StringVar, simpledialog, messagebox, Frame
+
+
+class QRCodeApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("QR Code Generator")
+
+        self.method_var = StringVar(value="number")
+
+        Label(root, text="QR Code Generator for Students", font=("Arial", 16)).pack(pady=20)
+
+        Frame(root, height=2, bg="gray").pack(fill="x", padx=10, pady=20)
+
+        Label(root, text="Choose a method to input student names:").pack(pady=10)
+        Button(root, text="Enter Number", command=self.ask_number).pack(pady=5)
+        Button(root, text="Upload CSV", command=self.upload_csv).pack(pady=5)
+
+    def ask_number(self):
+        self.method_var.set("number")
+        self.names = []
+        number = simpledialog.askinteger("Input", "How many students do you want to create QR codes for?")
+        if number:
+            for _ in range(number):
+                name = simpledialog.askstring("Input", f"Enter name of student {_+1}")
+                if name:
+                    self.names.append(name)
+            self.choose_save_location()
+
+    def upload_csv(self):
+        self.method_var.set("csv")
+        filepath = filedialog.askopenfilename(title="Select a CSV file", filetypes=(("CSV files", "*.csv"), ("All files", "*.*")))
+        if not filepath:
+            return
+
+        self.names = []
+        with open(filepath, 'r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                self.names.append(row[0])  # Assuming names are in the first column
+        self.choose_save_location()
+
+    def choose_save_location(self):
+        save_directory = filedialog.askdirectory(title="Choose a directory to save the QR codes")
+        if not save_directory:
+            return
+
+        self.generate_and_save_qrcodes(save_directory)
+
+    def generate_and_save_qrcodes(self, save_directory):
+        for name in self.names:
+            img = qrcode.make(name)  # Create a QR code
+            path = os.path.join(save_directory, f"{name}.png")
+            img.save(path)  # Save the QR code with the student's name
+
+        messagebox.showinfo("Success", "All QR codes saved successfully!")
+
+if __name__ == "__main__":
+    root = Tk()
+    app = QRCodeApp(root)
+    root.mainloop()
